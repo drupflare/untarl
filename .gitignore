@@ -1,0 +1,22 @@
+# bun
+node_modules/
+package-lock.json
+
+# build output
+dist/
+
+# test and coverage output
+coverage/
+*.lcov
+.vitest-cache/
+
+# typedoc output; built in CI and deployed to gh-pages, never committed to master
+typedoc/
+
+# logs and scratch
+*.log
+/tmp-*
+
+# editor and OS
+.idea/
+.DS_Store
