@@ -24,17 +24,28 @@ export type TarEntryType = 'file' | 'directory';
 export interface TarEntry {
 	/** full path as the archive names it, ustar prefix and GNU long names already resolved */
 	name: string;
+	/** size in bytes */
 	size: number;
+	/** type of the entry */
 	type: TarEntryType;
 	/** permission bits from the octal `mode` field; 0 when the field is blank */
 	mode: number;
+	/** the entry's data */
 	bytes: Uint8Array;
 }
 
 /** A malformed, truncated, or out-of-range archive. Carries the byte offset when one is known. */
 export class TarParseError extends Error {
+	/** The byte offset where the error occurred, if known. */
 	offset: number | undefined;
 
+	/**
+	 * Creates a new parse error with a message and optional offset. The message is prefixed with
+	 * "untar: " to distinguish it from other errors.
+	 *
+	 * @param message - The error message.
+	 * @param offset - The byte offset where the error occurred, if known.
+	 */
 	constructor(message: string, offset?: number) {
 		super(`untar: ${message}`);
 		this.name = 'TarParseError';
@@ -44,8 +55,16 @@ export class TarParseError extends Error {
 
 /** A member whose path would escape the target directory. Never thrown by `parseTar()`. */
 export class TarPathError extends Error {
+	/** The path that was refused. */
 	path: string;
 
+	/**
+	 * Creates a new path error with a message and the refused path. The message is prefixed with
+	 * "untar: " to distinguish it from other errors.
+	 *
+	 * @param path - The path that was refused.
+	 * @param reason - The reason why the path was refused.
+	 */
 	constructor(path: string, reason: string) {
 		super(`untar: refused path ${JSON.stringify(path)}: ${reason}`);
 		this.name = 'TarPathError';
