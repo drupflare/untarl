@@ -63,8 +63,6 @@ jobs:
     permissions:
       contents: read
       id-token: write
-      # the release goes to BOTH registries: npmjs is what users install, GitHub Packages keeps
-      # the release alongside the per-commit nightlies so one registry has the whole history
       packages: write
 
     steps:
@@ -118,22 +116,10 @@ jobs:
         with:
           node-version: '22'
           registry-url: 'https://registry.npmjs.org'
-      - name: Check the Token Is Present
-        if: steps.suffix.outputs.skip == 'false'
-        env:
-          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
-        run: |
-          if [ -z "$NPM_TOKEN" ]; then
-            echo "::error::NPM_TOKEN is not set on this repository. Add it under Settings -> Secrets and variables -> Actions. See PUBLISHING.md." >&2
-            exit 1
-          fi
       - name: Check Whether the Version Is Already on the Registry
         if: steps.suffix.outputs.skip == 'false'
         id: published
         run: |
-          # an unpublished PACKAGE 404s, which is the first release and must NOT skip; an
-          # unpublished VERSION of a published package yields a list without it, which also must
-          # not skip. The quoted match is anchored, so "0.1.0" cannot match inside "10.1.0"
           VERSIONS=$(npm view "$PACKAGE" versions --json 2>/dev/null || echo '[]')
           if echo "$VERSIONS" | grep -q "\"${VERSION}\""; then
             echo "${PACKAGE}@${VERSION} is already on the registry; skipping the publish so a re-run is idempotent."
@@ -145,10 +131,7 @@ jobs:
         if: steps.suffix.outputs.skip == 'false' && steps.published.outputs.skip == 'false'
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-        run: |
-          # --access public is not optional on a FIRST publish under a scope: a scoped package
-          # defaults to `restricted`, which installs fine for the publisher and for nobody else
-          npm publish --access public --provenance
+        run: npm publish --access public --provenance
       - name: Publish to Job Summary
         if: always() && steps.suffix.outputs.skip == 'false'
         run: |
@@ -163,13 +146,6 @@ jobs:
         if: steps.suffix.outputs.skip == 'false'
         env:
           NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        # NOT gated on the npmjs skip check: the two registries are independent, so a version
-        # already on npmjs may still be missing here, and skipping would leave a permanent hole.
-        # `|| true` because re-publishing an existing version is the expected outcome of a re-run
-        # and must not fail a release that already succeeded on npmjs.
-        #
-        # No --provenance: attestation is bound to the npmjs publish, and asking for it twice
-        # fails rather than producing a second valid statement.
         run: |
           npm publish --access public --registry https://npm.pkg.github.com || {
             echo "GitHub Packages publish did not take; it is most likely already present." \
