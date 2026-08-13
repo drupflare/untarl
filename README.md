@@ -98,7 +98,8 @@ const names = entries.filter((e) => e.type === 'file').map((e) => e.name);
 | `TarPathError`                    | `Error & { path: string }`                            | a member path that would escape the target directory                     |
 
 **The split between the two error types is the design.** `parseTar()` is faithful to the bytes
-and will happily hand back an entry named `../../etc/passwd`. `tarEntryTree()` is the layer that
+and will happily hand back an entry whose name climbs out of the target directory with `..`
+segments. `tarEntryTree()` is the layer that
 decides what is safe to write, and it is the only one that throws `TarPathError`. Keeping them
 apart means you can inspect a hostile archive without a parser that lies about its contents.
 
