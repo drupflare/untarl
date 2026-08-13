@@ -114,7 +114,7 @@ jobs:
         if: steps.suffix.outputs.skip == 'false'
         uses: actions/setup-node@v6
         with:
-          node-version: '22'
+          node-version: '24'
           registry-url: 'https://registry.npmjs.org'
       - name: Check Whether the Version Is Already on the Registry
         if: steps.suffix.outputs.skip == 'false'
