@@ -115,7 +115,8 @@ different dependency costs, and here there are none to differ.</p>
 </tbody>
 </table>
 <p><strong>The split between the two error types is the design.</strong> <code>parseTar()</code> is faithful to the bytes
-and will happily hand back an entry named <code>../../etc/passwd</code>. <code>tarEntryTree()</code> is the layer that
+and will happily hand back an entry whose name climbs out of the target directory with <code>..</code>
+segments. <code>tarEntryTree()</code> is the layer that
 decides what is safe to write, and it is the only one that throws <code>TarPathError</code>. Keeping them
 apart means you can inspect a hostile archive without a parser that lies about its contents.</p>
 <hr>
