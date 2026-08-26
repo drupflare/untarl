@@ -20,8 +20,8 @@ dependency count at zero and the bundle cost at nothing.
 - [Install](#-install)
 - [Usage](#-usage)
 - [API](#-api)
-- [Untrusted Input Is the Whole Design](#-untrusted-input-is-the-whole-design)
-- [What It Deliberately Does Not Do](#-what-it-deliberately-does-not-do)
+- [Untrusted Input](#-untrusted-input)
+- [Out of Scope](#-out-of-scope)
 - [Testing](#-testing)
 - [Related Repositories](#-related-repositories)
 - [License](#-license)
@@ -50,7 +50,7 @@ JavaScript, out where `await` is legal and no build flag has to change.
 bun add @drupflare/untarl
 ```
 
-**One entry point, deliberately.** The `exports` map declares `.` and `./package.json` and nothing
+**One entry point.** The `exports` map declares `.` and `./package.json` and nothing
 else, so every symbol arrives from `@drupflare/untarl` and `@drupflare/untarl/src/untar.ts` is refused
 by the resolver. A second name for the only module would be two ways to import the same thing with no
 way to say which is canonical; the sibling `cartridge` splits by subpath because its modules have
@@ -99,13 +99,13 @@ const names = entries.filter((e) => e.type === 'file').map((e) => e.name);
 
 **The split between the two error types is the design.** `parseTar()` is faithful to the bytes
 and will happily hand back an entry whose name climbs out of the target directory with `..`
-segments. `tarEntryTree()` is the layer that
-decides what is safe to write, and it is the only one that throws `TarPathError`. Keeping them
-apart means you can inspect a hostile archive without a parser that lies about its contents.
+segments. `tarEntryTree()` decides what is safe to write and is the only layer that throws
+`TarPathError`. Separating them lets you inspect a hostile archive without a parser that lies about
+its contents.
 
 ---
 
-## 🛡 Untrusted Input Is the Whole Design
+## 🛡 Untrusted Input
 
 A tarball off the network is untrusted, so every read is bounds-checked and every failure is a
 **named** error rather than a read past the end of the buffer, an infinite loop, or a plausible
@@ -122,14 +122,14 @@ empty result.
 | a hostile **directory** name, even though dropped | `TarPathError` — checked before the type filter |
 | a negative or non-integer `strip`                 | `RangeError`                                    |
 
-**The header checksum at offset 148 is deliberately not enforced.** Writers disagree on whether
+**The header checksum at offset 148 is not enforced.** Writers disagree on whether
 that field sums the bytes as signed or unsigned, so enforcing it rejects real archives; the octal
 and bounds checks already stop a malformed header from being read. That is a decision, not an
 omission.
 
 ---
 
-## 🚫 What It Deliberately Does Not Do
+## 🚫 Out of Scope
 
 - **It does not stream the parse.** The archive is buffered whole, because a tar header carries no
   back-pointer: an entry cannot be found without walking every block before it. For a contrib
@@ -153,13 +153,11 @@ bun run test # 87 assertions across 2 specs
 bun run test:coverage
 ```
 
-**87 passing**, at a measured **98.67% statements**, over hand-built archives rather than fixtures, so
-every refusal above has a case that trips it. The fixtures are constructed in the spec because the
-interesting inputs are the malformed ones, and a malformed file in `tests/` is indistinguishable from
-a corrupted checkout.
+**87 passing**, at **98.67% statements**, over archives built in the spec rather than checked-in
+fixtures, so every refusal above has a case that trips it.
 
-The one uncovered line is `src/untar.ts:231`, the "does not advance" guard, and it is **provably
-unreachable** rather than untested: `next` is `headerAt + 512 + ceil(size / 512) * 512`, so
+The one uncovered line is `src/untar.ts:231`, the "does not advance" guard. It is provably
+unreachable: `next` is `headerAt + 512 + ceil(size / 512) * 512`, so
 `next <= headerAt` cannot hold while a header is a whole block. It stays because the failure it
 guards against is a hang rather than an error.
 
