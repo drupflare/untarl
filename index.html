@@ -27,8 +27,8 @@ dependency count at zero and the bundle cost at nothing.</p>
 <li><a href="#-install">Install</a></li>
 <li><a href="#-usage">Usage</a></li>
 <li><a href="#-api">API</a></li>
-<li><a href="#-untrusted-input-is-the-whole-design">Untrusted Input Is the Whole Design</a></li>
-<li><a href="#-what-it-deliberately-does-not-do">What It Deliberately Does Not Do</a></li>
+<li><a href="#-untrusted-input">Untrusted Input</a></li>
+<li><a href="#-out-of-scope">Out of Scope</a></li>
 <li><a href="#-testing">Testing</a></li>
 <li><a href="#-related-repositories">Related Repositories</a></li>
 <li><a href="#-license">License</a></li>
@@ -51,7 +51,7 @@ JavaScript, out where <code>await</code> is legal and no build flag has to chang
 <pre><code class="sh"><span class="hl-0">bun</span><span class="hl-1"> </span><span class="hl-2">add</span><span class="hl-1"> </span><span class="hl-2">@drupflare/untarl</span>
 </code><button type="button">Copy</button></pre>
 
-<p><strong>One entry point, deliberately.</strong> The <code>exports</code> map declares <code>.</code> and <code>./package.json</code> and nothing
+<p><strong>One entry point.</strong> The <code>exports</code> map declares <code>.</code> and <code>./package.json</code> and nothing
 else, so every symbol arrives from <code>@drupflare/untarl</code> and <code>@drupflare/untarl/src/untar.ts</code> is refused
 by the resolver. A second name for the only module would be two ways to import the same thing with no
 way to say which is canonical; the sibling <code>cartridge</code> splits by subpath because its modules have
@@ -116,11 +116,11 @@ different dependency costs, and here there are none to differ.</p>
 </table>
 <p><strong>The split between the two error types is the design.</strong> <code>parseTar()</code> is faithful to the bytes
 and will happily hand back an entry whose name climbs out of the target directory with <code>..</code>
-segments. <code>tarEntryTree()</code> is the layer that
-decides what is safe to write, and it is the only one that throws <code>TarPathError</code>. Keeping them
-apart means you can inspect a hostile archive without a parser that lies about its contents.</p>
+segments. <code>tarEntryTree()</code> decides what is safe to write and is the only layer that throws
+<code>TarPathError</code>. Separating them lets you inspect a hostile archive without a parser that lies about
+its contents.</p>
 <hr>
-<h2 id="🛡-untrusted-input-is-the-whole-design" class="tsd-anchor-link">🛡 Untrusted Input Is the Whole Design<a href="#🛡-untrusted-input-is-the-whole-design" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="assets/icons.svg#icon-anchor"></use></svg></a></h2>
+<h2 id="🛡-untrusted-input" class="tsd-anchor-link">🛡 Untrusted Input<a href="#🛡-untrusted-input" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="assets/icons.svg#icon-anchor"></use></svg></a></h2>
 <p>A tarball off the network is untrusted, so every read is bounds-checked and every failure is a
 <strong>named</strong> error rather than a read past the end of the buffer, an infinite loop, or a plausible
 empty result.</p>
@@ -166,12 +166,12 @@ empty result.</p>
 </tr>
 </tbody>
 </table>
-<p><strong>The header checksum at offset 148 is deliberately not enforced.</strong> Writers disagree on whether
+<p><strong>The header checksum at offset 148 is not enforced.</strong> Writers disagree on whether
 that field sums the bytes as signed or unsigned, so enforcing it rejects real archives; the octal
 and bounds checks already stop a malformed header from being read. That is a decision, not an
 omission.</p>
 <hr>
-<h2 id="🚫-what-it-deliberately-does-not-do" class="tsd-anchor-link">🚫 What It Deliberately Does Not Do<a href="#🚫-what-it-deliberately-does-not-do" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="assets/icons.svg#icon-anchor"></use></svg></a></h2>
+<h2 id="🚫-out-of-scope" class="tsd-anchor-link">🚫 Out of Scope<a href="#🚫-out-of-scope" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="assets/icons.svg#icon-anchor"></use></svg></a></h2>
 <ul>
 <li><strong>It does not stream the parse.</strong> The archive is buffered whole, because a tar header carries no
 back-pointer: an entry cannot be found without walking every block before it. For a contrib
@@ -189,12 +189,10 @@ describes), and the v7 habit of writing a directory as typeflag <code>0</code> w
 <pre><code class="sh"><span class="hl-0">bun</span><span class="hl-1"> </span><span class="hl-2">run</span><span class="hl-1"> </span><span class="hl-2">typecheck</span><br/><span class="hl-0">bun</span><span class="hl-1"> </span><span class="hl-2">run</span><span class="hl-1"> </span><span class="hl-2">test</span><span class="hl-1"> </span><span class="hl-7"># 87 assertions across 2 specs</span><br/><span class="hl-0">bun</span><span class="hl-1"> </span><span class="hl-2">run</span><span class="hl-1"> </span><span class="hl-2">test:coverage</span>
 </code><button type="button">Copy</button></pre>
 
-<p><strong>87 passing</strong>, at a measured <strong>98.67% statements</strong>, over hand-built archives rather than fixtures, so
-every refusal above has a case that trips it. The fixtures are constructed in the spec because the
-interesting inputs are the malformed ones, and a malformed file in <code>tests/</code> is indistinguishable from
-a corrupted checkout.</p>
-<p>The one uncovered line is <code>src/untar.ts:231</code>, the &quot;does not advance&quot; guard, and it is <strong>provably
-unreachable</strong> rather than untested: <code>next</code> is <code>headerAt + 512 + ceil(size / 512) * 512</code>, so
+<p><strong>87 passing</strong>, at <strong>98.67% statements</strong>, over archives built in the spec rather than checked-in
+fixtures, so every refusal above has a case that trips it.</p>
+<p>The one uncovered line is <code>src/untar.ts:231</code>, the &quot;does not advance&quot; guard. It is provably
+unreachable: <code>next</code> is <code>headerAt + 512 + ceil(size / 512) * 512</code>, so
 <code>next &lt;= headerAt</code> cannot hold while a header is a whole block. It stays because the failure it
 guards against is a hang rather than an error.</p>
 <hr>
@@ -246,8 +244,8 @@ guards against is a hang rather than an error.</p>
 <li><a href="#📥-install"><span>📥 <wbr/>Install</span></a></li>
 <li><a href="#🚀-usage"><span>🚀 <wbr/>Usage</span></a></li>
 <li><a href="#🔧-api"><span>🔧 <wbr/>API</span></a></li>
-<li><a href="#🛡-untrusted-input-is-the-whole-design"><span>🛡 <wbr/>Untrusted <wbr/>Input <wbr/>Is the <wbr/>Whole <wbr/>Design</span></a></li>
-<li><a href="#🚫-what-it-deliberately-does-not-do"><span>🚫 <wbr/>What <wbr/>It <wbr/>Deliberately <wbr/>Does <wbr/>Not <wbr/>Do</span></a></li>
+<li><a href="#🛡-untrusted-input"><span>🛡 <wbr/>Untrusted <wbr/>Input</span></a></li>
+<li><a href="#🚫-out-of-scope"><span>🚫 <wbr/>Out of <wbr/>Scope</span></a></li>
 <li><a href="#🧪-testing"><span>🧪 <wbr/>Testing</span></a></li>
 <li><a href="#🔗-related-repositories"><span>🔗 <wbr/>Related <wbr/>Repositories</span></a></li>
 <li><a href="#📄-license"><span>📄 <wbr/>License</span></a></li></ul></div></details></div>
