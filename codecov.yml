@@ -5,10 +5,6 @@ coverage:
   status:
     project:
       default:
-        # set just under the MEASURED 98.67% statements on 2026-08-13, never from a guess. The one
-        # uncovered line is untar.ts:231, the "does not advance" guard, and it is PROVABLY
-        # unreachable rather than untested: `next` is `headerAt + 512 + ceil(size/512)*512`, so
-        # `next <= headerAt` cannot hold. It stays because the failure it guards is a hang
         target: 96%
         threshold: 2%
     patch:

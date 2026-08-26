@@ -3,7 +3,6 @@
 *.jpg binary
 *.ico binary
 *.bin binary
-# an archive fixture is bytes; a normalised one is a different archive
 *.tar binary
 *.gz binary
 *.tgz binary
