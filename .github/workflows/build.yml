@@ -61,17 +61,19 @@ jobs:
       - name: Version with the Commit Hash
         run: |
           VERSION=$(node -p "require('./package.json').version")
+          PACKAGE=$(node -p "require('./package.json').name")
           NIGHTLY="${VERSION}-${GITHUB_SHA::7}"
           npm version "$NIGHTLY" --no-git-tag-version
           echo "NIGHTLY=$NIGHTLY" >> "$GITHUB_ENV"
+          echo "PACKAGE=$PACKAGE" >> "$GITHUB_ENV"
           echo "Publishing nightly $NIGHTLY" >> "$GITHUB_STEP_SUMMARY"
       - name: Publish to GitHub Packages
         env:
           NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: npm publish --access public --registry https://npm.pkg.github.com
+        run: npm publish --access public --tag nightly --registry https://npm.pkg.github.com
       - name: Tag the Nightly as Latest
         env:
           NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          npm dist-tag add "@drupflare/untarl@${NIGHTLY}" latest \
+          npm dist-tag add "${PACKAGE}@${NIGHTLY}" latest \
             --registry https://npm.pkg.github.com
