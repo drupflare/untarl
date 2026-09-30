@@ -111,16 +111,16 @@ A tarball off the network is untrusted, so every read is bounds-checked and ever
 **named** error rather than a read past the end of the buffer, an infinite loop, or a plausible
 empty result.
 
-| Refused                                           | Error                                           |
-| ------------------------------------------------- | ----------------------------------------------- |
-| a header cut short by a truncated download        | `TarParseError`, with the byte offset           |
-| a `size` field that overruns the buffer           | `TarParseError`                                 |
-| a non-octal `size` or `mode`                      | `TarParseError`                                 |
-| a nameless entry                                  | `TarParseError`                                 |
-| an absolute member path                           | `TarPathError`, from `tarEntryTree()`           |
-| a member path containing `..`                     | `TarPathError`, from `tarEntryTree()`           |
-| a hostile **directory** name, even though dropped | `TarPathError` — checked before the type filter |
-| a negative or non-integer `strip`                 | `RangeError`                                    |
+| Refused                                           | Error                                          |
+| ------------------------------------------------- | ---------------------------------------------- |
+| a header cut short by a truncated download        | `TarParseError`, with the byte offset          |
+| a `size` field that overruns the buffer           | `TarParseError`                                |
+| a non-octal `size` or `mode`                      | `TarParseError`                                |
+| a nameless entry                                  | `TarParseError`                                |
+| an absolute member path                           | `TarPathError`, from `tarEntryTree()`          |
+| a member path containing `..`                     | `TarPathError`, from `tarEntryTree()`          |
+| a hostile **directory** name, even though dropped | `TarPathError`: checked before the type filter |
+| a negative or non-integer `strip`                 | `RangeError`                                   |
 
 **The header checksum at offset 148 is not enforced.** Writers disagree on whether
 that field sums the bytes as signed or unsigned, so enforcing it rejects real archives; the octal
