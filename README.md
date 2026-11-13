@@ -149,17 +149,18 @@ describes), and the v7 habit of writing a directory as typeflag `0` with a trail
 
 ```sh
 bun run typecheck
-bun run test # 87 assertions across 2 specs
+bun run test # 89 assertions across 2 specs
 bun run test:coverage
 ```
 
-**87 passing**, at **98.67% statements**, over archives built in the spec rather than checked-in
+**89 passing**, at **98.68% statements**, over archives built in the spec rather than checked-in
 fixtures, so every refusal above has a case that trips it.
 
-The one uncovered line is `src/untar.ts:231`, the "does not advance" guard. It is provably
-unreachable: `next` is `headerAt + 512 + ceil(size / 512) * 512`, so
-`next <= headerAt` cannot hold while a header is a whole block. It stays because the failure it
-guards against is a hang rather than an error.
+Two lines are uncovered. `src/untar.ts:75` is the `byteAt()` bounds guard. Every header read sits
+inside a block the loop has already checked, so it cannot fire from `parseTar()`. `src/untar.ts:214`
+is the "does not advance" guard, which is provably unreachable: `next` is
+`headerAt + 512 + ceil(size / 512) * 512`, so `next <= headerAt` cannot hold while a header is a
+whole block. It stays because the failure it guards against is a hang rather than an error.
 
 ---
 

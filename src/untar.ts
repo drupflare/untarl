@@ -1,51 +1,25 @@
-/**
- * Tar + gzip extraction, host-side in JavaScript.
- *
- * WHY IT LIVES HERE RATHER THAN IN PHP: installing a contrib module at runtime means reading a
- * drupal.org `.tar.gz`, and this wasm build has neither ext-zip nor ext-phar. Adding either is a
- * multi-hour Docker rebuild of the binary. `DecompressionStream('gzip')` is native in workerd and
- * tar is nothing but 512-byte blocks with an octal header, so the whole job fits out here where
- * awaiting is legal and no build flag has to change.
- *
- * A tarball off the network is UNTRUSTED INPUT. Every read is bounds-checked and throws a named
- * error rather than reading past the buffer or looping, and no path becomes a filename until
- * `tarEntryTree()` has refused the ones that escape. `parseTar()` stays faithful to the bytes;
- * `tarEntryTree()` is the layer that decides what is safe to write.
- *
- * The header checksum at offset 148 is deliberately NOT enforced. Writers disagree on whether the
- * field is summed as signed or unsigned bytes, so enforcing it rejects real archives, while the
- * octal and bounds checks below already stop a malformed header from being read.
- */
-
-/** What an entry is, after the several typeflags that mean the same thing are folded together. */
+/** What an entry is. The several typeflags that mean the same thing are folded into these two. */
 export type TarEntryType = 'file' | 'directory';
 
-/** One archive member. `bytes` is an owned copy, so the archive buffer can be released. */
+/** One archive member. `bytes` is a copy, so the archive buffer can be released. */
 export interface TarEntry {
-	/** full path as the archive names it, ustar prefix and GNU long names already resolved */
+	/** full path as the archive names it, with the ustar prefix and GNU long names resolved */
 	name: string;
 	/** size in bytes */
 	size: number;
-	/** type of the entry */
 	type: TarEntryType;
 	/** permission bits from the octal `mode` field; 0 when the field is blank */
 	mode: number;
-	/** the entry's data */
 	bytes: Uint8Array;
 }
 
-/** A malformed, truncated, or out-of-range archive. Carries the byte offset when one is known. */
+/**
+ * A malformed, truncated, or out-of-range archive. Messages start with `untar: `; `offset` is the
+ * byte position when it is known.
+ */
 export class TarParseError extends Error {
-	/** The byte offset where the error occurred, if known. */
 	offset: number | undefined;
 
-	/**
-	 * Creates a new parse error with a message and optional offset. The message is prefixed with
-	 * "untar: " to distinguish it from other errors.
-	 *
-	 * @param message - The error message.
-	 * @param offset - The byte offset where the error occurred, if known.
-	 */
 	constructor(message: string, offset?: number) {
 		super(`untar: ${message}`);
 		this.name = 'TarParseError';
@@ -53,18 +27,13 @@ export class TarParseError extends Error {
 	}
 }
 
-/** A member whose path would escape the target directory. Never thrown by `parseTar()`. */
+/**
+ * A member whose path would escape the target directory. Never thrown by `parseTar()`. Messages
+ * start with `untar: `; `path` is the refused name.
+ */
 export class TarPathError extends Error {
-	/** The path that was refused. */
 	path: string;
 
-	/**
-	 * Creates a new path error with a message and the refused path. The message is prefixed with
-	 * "untar: " to distinguish it from other errors.
-	 *
-	 * @param path - The path that was refused.
-	 * @param reason - The reason why the path was refused.
-	 */
 	constructor(path: string, reason: string) {
 		super(`untar: refused path ${JSON.stringify(path)}: ${reason}`);
 		this.name = 'TarPathError';
@@ -83,22 +52,23 @@ const SIZE_LEN = 12;
 const TYPE_AT = 156;
 const PREFIX_AT = 345;
 const PREFIX_LEN = 155;
+const MAGIC_END_AT = 262;
 
 const NUL = 0x00;
 const SPACE = 0x20;
 
 const TYPE_OLD_FILE = 0x00;
-const TYPE_FILE = 0x30; // '0'
-const TYPE_DIR = 0x35; // '5'
-const TYPE_CONTIGUOUS = 0x37; // '7', a regular file everywhere that still emits it
-const TYPE_PAX = 0x78; // 'x'
-const TYPE_PAX_GLOBAL = 0x67; // 'g'
-const TYPE_LONGNAME = 0x4c; // 'L'
-const TYPE_LONGLINK = 0x4b; // 'K'
+const TYPE_FILE = 0x30;
+const TYPE_DIR = 0x35;
+const TYPE_CONTIGUOUS = 0x37; // some writers still emit it for regular files
+const TYPE_PAX = 0x78;
+const TYPE_PAX_GLOBAL = 0x67;
+const TYPE_LONGNAME = 0x4c;
+const TYPE_LONGLINK = 0x4b;
 
 const utf8 = new TextDecoder();
 
-/** Every byte read goes through here, so a short buffer throws instead of yielding undefined. */
+// reads past the end throw here instead of yielding undefined
 function byteAt(bytes: Uint8Array, index: number): number {
 	const b = bytes[index];
 	if (b === undefined)
@@ -106,35 +76,27 @@ function byteAt(bytes: Uint8Array, index: number): number {
 	return b;
 }
 
-/** returns false at the first non-zero byte, which for a real header is byte 0 */
 function isZeroBlock(bytes: Uint8Array, at: number): boolean {
 	for (let i = at; i < at + BLOCK; i++) if (byteAt(bytes, i) !== NUL) return false;
 	return true;
 }
 
-/** Reads a NUL-terminated header field. Names are UTF-8 in every archive that matters. */
+// utf-8 is assumed; the header has no charset field
 function readField(bytes: Uint8Array, at: number, len: number): string {
 	let end = at;
 	while (end < at + len && byteAt(bytes, end) !== NUL) end++;
 	return utf8.decode(bytes.subarray(at, end));
 }
 
-/** Reads a NUL-terminated string out of an entry body (GNU long name). */
 function readCString(body: Uint8Array): string {
-	let end = 0;
-	while (end < body.length && byteAt(body, end) !== NUL) end++;
-	return utf8.decode(body.subarray(0, end));
+	const end = body.indexOf(NUL);
+	return utf8.decode(body.subarray(0, end === -1 ? body.length : end));
 }
 
-/**
- * Parses one octal header field.
- *
- * Padding is NUL or space and may come before or after the digits; anything else is garbage and
- * throws, which is what stops a random buffer from producing a plausible size. A blank field is 0.
- */
+// nul or space padding may sit before or after the digits; any other byte throws, so random
+// bytes never read as a plausible size. A blank field is 0.
 function parseOctal(bytes: Uint8Array, at: number, len: number, field: string): number {
-	// GNU stores a size above 8 GiB as base-256 with the high bit set; nothing that large can be
-	// held in a Worker's memory anyway, so refuse it loudly instead of misreading it as octal
+	// gnu base-256 only encodes sizes over 8 GiB, too big for a worker; refuse rather than misread
 	if ((byteAt(bytes, at) & 0x80) !== 0) {
 		throw new TarParseError(
 			`${field} field uses GNU base-256 encoding, which is unsupported`,
@@ -165,13 +127,8 @@ function parseOctal(bytes: Uint8Array, at: number, len: number, field: string): 
 	return value;
 }
 
-/**
- * Pulls the `path` override out of a pax extended header body.
- *
- * Records are `"<len> <key>=<value>\n"` where `len` counts itself, so the length prefix is what
- * makes a value containing a newline unambiguous. Anything unparseable ends the scan; a pax header
- * we cannot read is not a reason to fail an otherwise good archive.
- */
+// the length prefix, not the newline, delimits a value
+// an unreadable record ends the scan; the archive still parses
 function paxPath(body: Uint8Array): string | null {
 	let found: string | null = null;
 	let i = 0;
@@ -195,11 +152,14 @@ function paxPath(body: Uint8Array): string | null {
 /**
  * Parses a POSIX/ustar tar archive.
  *
- * Handles the shapes real drupal.org tarballs contain: the ustar `prefix` split, GNU `L` long
- * names, pax `x`/`g` headers (skipped, though an `x` header's `path=` record renames the entry it
- * describes), and the v7 habit of writing a directory as typeflag `0` with a trailing slash.
- * Symlinks, hard links and device nodes are consumed and dropped -- nothing in a module install
- * should follow one.
+ * Handles the ustar `prefix` split, GNU `L` long names, and pax `x`/`g` headers. An `x` header's
+ * `path=` record renames the entry it describes; `g` headers are skipped. A v7 directory, written
+ * as typeflag `0` with a trailing slash, is read as a directory. Symlinks, hard links and device
+ * nodes are consumed and dropped; nothing in a module install should follow one.
+ *
+ * The header checksum at offset 148 is not verified. Writers disagree on whether it sums bytes as
+ * signed or unsigned, so enforcing it rejects real archives, while the octal and bounds checks
+ * already stop a malformed header from being read.
  *
  * @throws {TarParseError} on a truncated header or body, a size that overruns the buffer, a
  *   non-octal size or mode, or a nameless entry.
@@ -208,14 +168,13 @@ export function parseTar(bytes: Uint8Array): TarEntry[] {
 	const entries: TarEntry[] = [];
 	let offset = 0;
 	let zeroBlocks = 0;
-	// set by an 'L' body or a pax `path=` record, consumed by the next real entry
+	// from an 'L' body or pax `path=`; consumed by the next real entry
 	let pendingName: string | null = null;
 
 	while (offset < bytes.length) {
 		const remaining = bytes.length - offset;
 		if (remaining < BLOCK) {
-			// tar pads the archive out to whole blocks, so a partial one is a cut-off download; after
-			// the end-of-archive marker it is only padding and can be ignored
+			// a partial block is a cut-off download, unless it follows the end-of-archive marker
 			if (zeroBlocks > 0) break;
 			throw new TarParseError(
 				`truncated header: ${remaining} of ${BLOCK} bytes at offset ${offset}`,
@@ -233,7 +192,9 @@ export function parseTar(bytes: Uint8Array): TarEntry[] {
 
 		const headerAt = offset;
 		const rawName = readField(bytes, offset + NAME_AT, NAME_LEN);
-		const prefix = readField(bytes, offset + PREFIX_AT, PREFIX_LEN);
+		// gnu magic ("ustar " with a space) keeps atime in the prefix slot
+		const gnu = byteAt(bytes, offset + MAGIC_END_AT) === SPACE;
+		const prefix = gnu ? '' : readField(bytes, offset + PREFIX_AT, PREFIX_LEN);
 		const mode = parseOctal(bytes, offset + MODE_AT, MODE_LEN, 'mode');
 		const size = parseOctal(bytes, offset + SIZE_AT, SIZE_LEN, 'size');
 		const flag = byteAt(bytes, offset + TYPE_AT);
@@ -248,8 +209,7 @@ export function parseTar(bytes: Uint8Array): TarEntry[] {
 		}
 
 		const next = dataAt + Math.ceil(size / BLOCK) * BLOCK;
-		// unreachable while a header is a whole block, asserted because the cost of being wrong is a
-		// hang rather than an error
+		// unreachable with whole-block headers; kept because the failure mode is a hang
 		if (next <= headerAt) {
 			throw new TarParseError(`entry ${JSON.stringify(rawName)} does not advance`, headerAt);
 		}
@@ -263,8 +223,7 @@ export function parseTar(bytes: Uint8Array): TarEntry[] {
 		}
 		if (flag === TYPE_LONGLINK) continue;
 		if (flag === TYPE_PAX || flag === TYPE_PAX_GLOBAL) {
-			// a global header applies to the rest of the archive, which is a claim about metadata we
-			// do not carry, so only the per-file form can rename anything
+			// a global header is metadata we do not carry, so only the per-file form renames
 			const path = flag === TYPE_PAX ? paxPath(body) : null;
 			if (path !== null) pendingName = path;
 			continue;
@@ -298,11 +257,11 @@ export function parseTar(bytes: Uint8Array): TarEntry[] {
 /**
  * Gunzips a stream and parses the tar inside it.
  *
- * The archive is buffered whole because a tar header carries no back-pointer, so an entry cannot
- * be found without walking every block before it. For a contrib module that is a few megabytes.
+ * The archive is buffered whole. A tar header has no back-pointer, so an entry is found only by
+ * walking every block before it.
  *
- * @throws {TarParseError} for the same reasons as `parseTar()`; a corrupt gzip member rejects from
- *   `DecompressionStream` itself.
+ * @throws {TarParseError} for the same reasons as `parseTar()`. A corrupt gzip member rejects with
+ *   the `DecompressionStream` error instead.
  */
 export async function untarGzip(stream: ReadableStream<Uint8Array>): Promise<TarEntry[]> {
 	const gunzip = new DecompressionStream('gzip') as ReadableWritablePair<Uint8Array, Uint8Array>;
@@ -311,7 +270,7 @@ export async function untarGzip(stream: ReadableStream<Uint8Array>): Promise<Tar
 	return parseTar(new Uint8Array(buffer));
 }
 
-/** Splits a member path, refusing the two forms that escape the target directory. */
+// absolute paths and '..' segments are refused; '.' and empty segments are dropped
 function safeParts(name: string): string[] {
 	if (name.startsWith('/')) throw new TarPathError(name, 'absolute paths are refused');
 	const parts = name.split('/').filter((p) => p !== '' && p !== '.');
@@ -324,11 +283,12 @@ function safeParts(name: string): string[] {
 /**
  * Flattens entries into the file tree to write, with the leading `strip` path components removed.
  *
- * `strip = 1` is the useful default because a drupal.org tarball wraps everything in one
- * `modulename/` directory. Directories are dropped -- a file's own path implies them -- and so is
- * any file left with nothing after the strip, which is what tar's own `--strip-components` does.
- * A later entry with the same resulting path wins, also matching tar.
+ * `strip = 1` is the default because a drupal.org tarball wraps everything in one `modulename/`
+ * directory. Directories are dropped, since a file's path implies them. A file with nothing left
+ * after the strip is dropped too, as tar's `--strip-components` does. A later entry with the same
+ * path wins, as in tar.
  *
+ * @throws {RangeError} when `strip` is not a non-negative integer.
  * @throws {TarPathError} on a member path that is absolute or contains a `..` component.
  */
 export function tarEntryTree(entries: TarEntry[], strip = 1): Map<string, Uint8Array> {
@@ -338,7 +298,7 @@ export function tarEntryTree(entries: TarEntry[], strip = 1): Map<string, Uint8A
 
 	const out = new Map<string, Uint8Array>();
 	for (const entry of entries) {
-		// checked for every entry, not just files, so a hostile directory name still fails
+		// before the type filter, so a hostile directory name still fails
 		const parts = safeParts(entry.name);
 		if (entry.type !== 'file') continue;
 		if (parts.length <= strip) continue;

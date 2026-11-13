@@ -1,21 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { TarParseError, TarPathError, parseTar, tarEntryTree, untarGzip } from '../src/untar.js';
 
-/**
- * The fixtures are built here rather than checked in as binaries, because the interesting cases
- * are exactly the ones no `tar` will produce for you: a size field that overruns the buffer, junk
- * where the octal belongs, a body cut in half, a member called `../escape.txt`. A generator can
- * write those; a recorded archive cannot.
- *
- * `makeTar()` writes a real ustar header including a correct checksum at 148, so the fixtures are
- * archives an actual tar would accept -- the parser does not verify that field, and a fixture that
- * skipped it could not tell the difference.
- *
- * `CompressionStream` and `DecompressionStream` are both declared in `@cloudflare/workers-types`
- * and present in workerd, so the gzip round trip runs in this lane rather than needing the node
- * project.
- */
-
 const enc = new TextEncoder();
 const dec = new TextDecoder();
 
@@ -26,6 +11,8 @@ interface Member {
 	type?: string;
 	mode?: number;
 	prefix?: string;
+	/** writes the GNU magic, which keeps atime where ustar keeps the prefix */
+	gnu?: boolean;
 	/** raw bytes for the 12-byte size field, for headers a real tar would never write */
 	rawSize?: string | Uint8Array;
 }
@@ -68,8 +55,11 @@ function makeTar(members: Member[], endBlocks = 2): Uint8Array {
 		// the checksum is defined as the sum with this field read as eight spaces
 		header.fill(0x20, 148, 156);
 		put(header, 156, m.type ?? '0', 1);
-		put(header, 257, 'ustar\0', 6);
-		put(header, 263, '00', 2);
+		if (m.gnu) put(header, 257, 'ustar  \0', 8);
+		else {
+			put(header, 257, 'ustar\0', 6);
+			put(header, 263, '00', 2);
+		}
 		if (m.prefix !== undefined) put(header, 345, m.prefix, 155);
 		let sum = 0;
 		for (const b of header) sum += b;
@@ -178,7 +168,7 @@ describe('parseTar: several members and the ones that are not files', () => {
 		expect(text(tree.get('src/b.txt'))).toBe('bbb');
 	});
 
-	it('treats a v7 directory -- typeflag 0 with a trailing slash -- as a directory', () => {
+	it('treats a v7 directory (typeflag 0 with a trailing slash) as a directory', () => {
 		const old = parseTar(makeTar([{ name: 'mod/sub/', type: '0' }]));
 		expect(old[0]?.type).toBe('directory');
 	});
@@ -188,7 +178,7 @@ describe('parseTar: several members and the ones that are not files', () => {
 		expect(old[0]).toMatchObject({ name: 'mod/a.txt', type: 'file' });
 	});
 
-	it("treats typeflag 7 -- 'contiguous' -- as a regular file", () => {
+	it("treats typeflag 7 ('contiguous') as a regular file", () => {
 		const cont = parseTar(makeTar([{ name: 'mod/a.txt', type: '7', body: 'aaa' }]));
 		expect(text(cont[0]?.bytes)).toBe('aaa');
 	});
@@ -217,6 +207,13 @@ describe('parseTar: the three ways a long path is encoded', () => {
 		expect(entries[0]?.name).toBe('mod/file.txt');
 	});
 
+	it('ignores the atime that a GNU header keeps in the prefix slot', () => {
+		const entries = parseTar(
+			makeTar([{ name: 'mod/a.txt', prefix: '00000000001', gnu: true, body: 'p' }])
+		);
+		expect(entries[0]?.name).toBe('mod/a.txt');
+	});
+
 	it("resolves a GNU 'L' long name onto the entry that follows it", () => {
 		const long = `mod/src/${'deeply_nested_'.repeat(8)}name.txt`;
 		expect(long.length).toBeGreaterThan(100);
@@ -229,6 +226,16 @@ describe('parseTar: the three ways a long path is encoded', () => {
 		expect(entries).toHaveLength(1);
 		expect(entries[0]?.name).toBe(long);
 		expect(text(entries[0]?.bytes)).toBe('long');
+	});
+
+	it("reads a GNU 'L' body with no NUL terminator as the whole body", () => {
+		const entries = parseTar(
+			makeTar([
+				{ name: '././@LongLink', type: 'L', body: 'mod/unterminated.txt' },
+				{ name: 'mod/a.txt', body: 'aaa' }
+			])
+		);
+		expect(entries.map((e) => e.name)).toEqual(['mod/unterminated.txt']);
 	});
 
 	it("consumes a GNU 'K' long link name without emitting anything", () => {
@@ -392,8 +399,7 @@ describe('parseTar: where the archive ends', () => {
 	});
 
 	it('reads a partial block after a single marker as padding, not as truncation', () => {
-		// the same 37 bytes are an error BEFORE any marker and padding after one, which is the whole
-		// reason the truncation check consults zeroBlocks
+		// the same 37 bytes are truncation before a marker and padding after one
 		const archive = concat([
 			makeTar([{ name: 'mod/a.txt', body: 'aaa' }], 1),
 			new Uint8Array(37)
@@ -524,8 +530,7 @@ describe('tarEntryTree: paths that escape are refused', () => {
 	});
 
 	it('parseTar itself stays faithful and does NOT refuse the path', () => {
-		// the split is deliberate: parsing reports what the archive says, the tree decides what is
-		// safe to write, so a caller cannot get an unchecked path by accident
+		// the split is deliberate: parsing reports the bytes, the tree decides what is safe to write
 		expect(parseTar(makeTar([{ name: '../escape.txt', body: 'x' }]))[0]?.name).toBe(
 			'../escape.txt'
 		);
