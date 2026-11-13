@@ -1,6 +1,6 @@
 {
 	"name": "@drupflare/untarl",
-	"version": "0.1.0",
+	"version": "0.1.1",
 	"type": "module",
 	"description": "Dependency-free, workerd-safe tar and tar.gz extraction. No Node APIs.",
 	"license": "MIT",

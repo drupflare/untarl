@@ -305,7 +305,8 @@ export function parseTar(bytes: Uint8Array): TarEntry[] {
  *   `DecompressionStream` itself.
  */
 export async function untarGzip(stream: ReadableStream<Uint8Array>): Promise<TarEntry[]> {
-	const inflated = stream.pipeThrough(new DecompressionStream('gzip'));
+	const gunzip = new DecompressionStream('gzip') as ReadableWritablePair<Uint8Array, Uint8Array>;
+	const inflated = stream.pipeThrough(gunzip);
 	const buffer = await new Response(inflated).arrayBuffer();
 	return parseTar(new Uint8Array(buffer));
 }
