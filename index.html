@@ -1,5 +1,5 @@
-<!DOCTYPE html><html class="default" lang="en" data-base="./"><head><meta charset="utf-8"/><meta http-equiv="x-ua-compatible" content="IE=edge"/><title>@drupflare/untarl - v0.1.0</title><meta name="description" content="Documentation for @drupflare/untarl"/><meta name="viewport" content="width=device-width, initial-scale=1"/><link rel="stylesheet" href="assets/style.css"/><link rel="stylesheet" href="assets/highlight.css"/><script defer src="assets/main.js"></script><script async src="assets/icons.js" id="tsd-icons-script"></script><script async src="assets/search.js" id="tsd-search-script"></script><script async src="assets/navigation.js" id="tsd-nav-script"></script></head><body><script>document.documentElement.dataset.theme = localStorage.getItem("tsd-theme") || "os";document.body.style.display="none";setTimeout(() => window.app?app.showPage():document.body.style.removeProperty("display"),500)</script><header class="tsd-page-toolbar">
-<div class="tsd-toolbar-contents container"><a href="index.html" class="title">@drupflare/untarl - v0.1.0</a>
+<!DOCTYPE html><html class="default" lang="en" data-base="./"><head><meta charset="utf-8"/><meta http-equiv="x-ua-compatible" content="IE=edge"/><title>@drupflare/untarl - v0.1.1</title><meta name="description" content="Documentation for @drupflare/untarl"/><meta name="viewport" content="width=device-width, initial-scale=1"/><link rel="stylesheet" href="assets/style.css"/><link rel="stylesheet" href="assets/highlight.css"/><script defer src="assets/main.js"></script><script async src="assets/icons.js" id="tsd-icons-script"></script><script async src="assets/search.js" id="tsd-search-script"></script><script async src="assets/navigation.js" id="tsd-nav-script"></script></head><body><script>document.documentElement.dataset.theme = localStorage.getItem("tsd-theme") || "os";document.body.style.display="none";setTimeout(() => window.app?app.showPage():document.body.style.removeProperty("display"),500)</script><header class="tsd-page-toolbar">
+<div class="tsd-toolbar-contents container"><a href="index.html" class="title">@drupflare/untarl - v0.1.1</a>
 <div id="tsd-toolbar-links"></div><button id="tsd-search-trigger" class="tsd-widget" aria-label="Search"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true"><use href="assets/icons.svg#icon-search"></use></svg></button><dialog id="tsd-search" aria-label="Search"><input role="combobox" id="tsd-search-input" aria-controls="tsd-search-results" aria-autocomplete="list" aria-expanded="true" autocapitalize="off" autocomplete="off" placeholder="Search the docs" maxLength="100"/>
 <ul role="listbox" id="tsd-search-results"></ul>
 <div id="tsd-search-status" aria-live="polite" aria-atomic="true">
@@ -7,7 +7,7 @@
 <div class="container container-main">
 <div class="col-content">
 <div class="tsd-page-title">
-<h1>@drupflare/untarl - v0.1.0</h1></div>
+<h1>@drupflare/untarl - v0.1.1</h1></div>
 <div class="tsd-panel tsd-typography"><h1 id="📦-untarl" class="tsd-anchor-link">📦 untarl<a href="#📦-untarl" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="assets/icons.svg#icon-anchor"></use></svg></a></h1>
 <blockquote>
 <p>Tar and tar.gz extraction with no dependencies and no Node APIs</p>
@@ -186,15 +186,16 @@ names, pax <code>x</code>/<code>g</code> headers (skipped, though an <code>x</co
 describes), and the v7 habit of writing a directory as typeflag <code>0</code> with a trailing slash.</p>
 <hr>
 <h2 id="🧪-testing" class="tsd-anchor-link">🧪 Testing<a href="#🧪-testing" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="assets/icons.svg#icon-anchor"></use></svg></a></h2>
-<pre><code class="sh"><span class="hl-0">bun</span><span class="hl-1"> </span><span class="hl-2">run</span><span class="hl-1"> </span><span class="hl-2">typecheck</span><br/><span class="hl-0">bun</span><span class="hl-1"> </span><span class="hl-2">run</span><span class="hl-1"> </span><span class="hl-2">test</span><span class="hl-1"> </span><span class="hl-7"># 87 assertions across 2 specs</span><br/><span class="hl-0">bun</span><span class="hl-1"> </span><span class="hl-2">run</span><span class="hl-1"> </span><span class="hl-2">test:coverage</span>
+<pre><code class="sh"><span class="hl-0">bun</span><span class="hl-1"> </span><span class="hl-2">run</span><span class="hl-1"> </span><span class="hl-2">typecheck</span><br/><span class="hl-0">bun</span><span class="hl-1"> </span><span class="hl-2">run</span><span class="hl-1"> </span><span class="hl-2">test</span><span class="hl-1"> </span><span class="hl-7"># 89 assertions across 2 specs</span><br/><span class="hl-0">bun</span><span class="hl-1"> </span><span class="hl-2">run</span><span class="hl-1"> </span><span class="hl-2">test:coverage</span>
 </code><button type="button">Copy</button></pre>
 
-<p><strong>87 passing</strong>, at <strong>98.67% statements</strong>, over archives built in the spec rather than checked-in
+<p><strong>89 passing</strong>, at <strong>98.68% statements</strong>, over archives built in the spec rather than checked-in
 fixtures, so every refusal above has a case that trips it.</p>
-<p>The one uncovered line is <code>src/untar.ts:231</code>, the &quot;does not advance&quot; guard. It is provably
-unreachable: <code>next</code> is <code>headerAt + 512 + ceil(size / 512) * 512</code>, so
-<code>next &lt;= headerAt</code> cannot hold while a header is a whole block. It stays because the failure it
-guards against is a hang rather than an error.</p>
+<p>Two lines are uncovered. <code>src/untar.ts:75</code> is the <code>byteAt()</code> bounds guard. Every header read sits
+inside a block the loop has already checked, so it cannot fire from <code>parseTar()</code>. <code>src/untar.ts:214</code>
+is the &quot;does not advance&quot; guard, which is provably unreachable: <code>next</code> is
+<code>headerAt + 512 + ceil(size / 512) * 512</code>, so <code>next &lt;= headerAt</code> cannot hold while a header is a
+whole block. It stays because the failure it guards against is a hang rather than an error.</p>
 <hr>
 <h2 id="🔗-related-repositories" class="tsd-anchor-link">🔗 Related Repositories<a href="#🔗-related-repositories" aria-label="Permalink" class="tsd-anchor-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="assets/icons.svg#icon-anchor"></use></svg></a></h2>
 <table>
@@ -250,7 +251,7 @@ guards against is a hang rather than an error.</p>
 <li><a href="#🔗-related-repositories"><span>🔗 <wbr/>Related <wbr/>Repositories</span></a></li>
 <li><a href="#📄-license"><span>📄 <wbr/>License</span></a></li></ul></div></details></div>
 <div class="site-menu">
-<nav class="tsd-navigation"><a href="modules.html">@drupflare/untarl - v0.1.0</a>
+<nav class="tsd-navigation"><a href="modules.html">@drupflare/untarl - v0.1.1</a>
 <ul class="tsd-small-nested-navigation" id="tsd-nav-container">
 <li>Loading...</li></ul></nav></div></div></div><footer>
 <p class="tsd-generator">Generated using <a href="https://typedoc.org/" target="_blank">TypeDoc</a></p></footer>
